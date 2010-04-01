@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN"
+	"http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<head>
+	<title>untitled</title>
+	<script src="jquery.js" type="text/javascript" charset="utf-8"></script>
+	<script src="lastfm.api.md5.js" type="text/javascript" charset="utf-8"></script>
+	<script src="lastfm.api.js" type="text/javascript" charset="utf-8"></script>
+  <script type="text/javascript" charset="utf-8">
+    lastfm = new LastFM({
+      apiKey:    'APIKEY',
+      apiSecret: 'APISECRET'
+    });
+    
+    // lastfm.artist.getInfo({album: 'and out comes the wovles', artist: 'rancid'}, {success: function(data){ 
+    //   console.log("Success");
+    //   console.log(data);
+    // }});
+    // 
+    
+    // move this into lastfm.api.js (where it gets init'ed?)
+    lastfm.handshakeCall({'username':'me','password':'secret'});
+    qs = window.location.href.split('?');
+    if(qs && qs.match(/justAuthenticated=true/)) {
+      console.log("JUST AUTHED!!");
+      qs = qs.split('&').map(function(param){
+        param = params.split('=');
+        if (params[0] == 'token') {
+          console.log("setting auth token to " + params[1]);
+          lastfm.setAuthToken(params[1]);
+        }
+      });
+    }
+  </script>
+</head>
+
+<body>
+  <h1>last.fm Scrobbling test</h1>
+  <ul></ul>
+</body>
+</html>

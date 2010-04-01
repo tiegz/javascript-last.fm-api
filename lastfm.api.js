@@ -9,6 +9,8 @@ function LastFM(options){
 	var apiKey    = options.apiKey    || '';
 	var apiSecret = options.apiSecret || '';
 	var apiUrl    = options.apiUrl    || 'http://ws.audioscrobbler.com/2.0/';
+	var authToken = options.authToken || undefined;
+	var hsUrl     = options.hsUrl     || 'http://post.audioscrobbler.com/';
 	var cache     = options.cache     || undefined;
 
 	/* Set API key. */
@@ -24,6 +26,11 @@ function LastFM(options){
 	/* Set API URL. */
 	this.setApiUrl = function(_apiUrl){
 		apiUrl = _apiUrl;
+	};
+
+	/* Set Auth Token. Good for 60 minutes. Set this in session? */
+	this.setAuthToken = function(_authToken){
+		authToken = _authToken;
 	};
 
 	/* Set cache. */
@@ -166,6 +173,35 @@ function LastFM(options){
 		}
 	};
 
+	     
+	/* Handshake call. (http://www.last.fm/api/submissions) */
+	this.handshakeCall = function(params){
+		if (!auth.getAuthToken()) auth.getUserAuth();
+
+		return false;
+    
+		// var ts = Math.round(new Date().getTime() / 1000);
+		// var token = md5(params.username + md5(params.password);
+		// this.auth.getSession({'api_key':apiKey,'token':token}, {success: function(data){
+		// 	console.log("returned from sessionw tih ");
+		// 	console.log(data);
+		// }});
+		// return false;
+
+		// var params = {
+		// 	'hs'      : 'true',    // indicates this is a handshake
+		// 	'p'       : '1.2.1',   // version of submissions protocol
+		// 	'c'       : 'tst',     // OBTAIN A CLIENT IDENTIFIER FROM LAST.FM! This one's only for development.
+		// 	'v'       : '1.0',     // version of client,
+		// 	'u'       : params.username,      // last.fm user
+		// 	't'       : ts,
+		// 	'a'       : this.auth.getHandshakeToken(ts),
+		// 	'api_key' : apiKey,
+		// 	'sk'      : ''
+		// 	  };
+		// 	  // ?hs=true&p=1.2.1&c=<client-id>&v=<client-ver>&u=<user>&t=<timestamp>&a=<auth>
+	};
+	
 	/* Normal method call. */
 	var call = function(method, params, callbacks, requestMethod){
 		/* Set default values. */
@@ -708,6 +744,18 @@ function LastFM(options){
 
 			/* Needs lastfm.api.md5.js. */
 			return md5(string);
+		},
+
+		getHandshakeToken : function(timestamp){
+			return md5(apiSecret + timestamp);
+		},
+		
+		getUserAuth : function(){
+			window.location.href = 'http://www.last.fm/api/auth/?api_key=' + apiKey;
+		},
+
+		getAuthToken : function() {
+			return authToken;
 		}
 	};
 }
