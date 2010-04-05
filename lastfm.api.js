@@ -6,12 +6,17 @@
 
 function LastFM(options){
 	/* Set default values for required options. */
-	var apiKey       = options.apiKey    || '';
-	var apiSecret    = options.apiSecret || '';
-	var apiUrl       = options.apiUrl    || 'http://ws.audioscrobbler.com/2.0/';
-	var webAuthToken = options.authToken || undefined;
-	var hsUrl        = options.hsUrl     || 'http://post.audioscrobbler.com/';
-	var cache        = options.cache     || undefined;
+	var apiKey                = options.apiKey    || '';
+	var apiSecret             = options.apiSecret || '';
+	var apiUrl                = options.apiUrl    || 'http://ws.audioscrobbler.com/2.0/';
+	var webAuthToken          = options.authToken || undefined;
+	var webAuthTokenRegExp    = /token=([a-zA-Z0-9]{32})/;
+	var webSessionKey         = options.webSessionKey || undefined;
+	var scrobbleHandshakeUrl  = options.scrobbleHandshakeUrl || 'http://post.audioscrobbler.com/';
+	var scrobbleSessionId     = options.scrobbleSessionId || undefined;
+	var scrobbleNowPlayingUrl = options.scrobbleNowPlayingUrl || undefined;
+	var scrobbleSubmissionUrl = options.scrobbleSubmissionUrl || undefined;
+	var cache                 = options.cache     || undefined;
 
 	/* Set API key. */
 	this.setApiKey = function(_apiKey){
@@ -28,18 +33,28 @@ function LastFM(options){
 		apiUrl = _apiUrl;
 	};
 
-	/* Set Auth Token. Good for 60 minutes. Set this in session? */
-	this.setWebAuthToken = function(_webAuthToken){
-		webAuthToken = _webAuthToken;
-	};
-
 	/* Set cache. */
 	this.setCache = function(_cache){
 		cache = _cache;
 	};
+	
+	this.setScrobbleSessionId = function(_id){
+		scrobbleSessionId = _id;
+	};
+	
+	this.setScrobbleNowPlayingUrl = function(_id){
+		scrobbleNowPlayingUrl = _id;
+	};
+	
+	this.setScrobbleSubmissionUrl = function(_id){
+		scrobbleSubmissionUrl = _id;
+	}
 
 	/* Internal call (POST, GET). */
-	var internalCall = function(params, callbacks, requestMethod){
+	var internalCall = function(params, callbacks, requestMethod, url, opts){
+		/* An optional url may be passed (for the Submissions, for example) */
+		url = url || apiUrl;
+
 		/* Cross-domain POST request (doesn't return any data, always successful). */
 		if(requestMethod == 'POST'){
 			/* Create iframe element to post data. */
@@ -78,7 +93,8 @@ function LastFM(options){
 			/* Open iframe document and write a form. */
 			doc.open();
 			doc.clear();
-			doc.write('<form method="post" action="' + apiUrl + '" id="form">');
+
+			doc.write('<form method="post" action="' + url + '" id="form">');
 
 			/* Write POST parameters as input fields. */
 			for(var param in params){
@@ -111,7 +127,7 @@ function LastFM(options){
 				return;
 			}
 
-			/* Set callback name and response format. */
+			/* Set url, callback name, response format. */
 			params.callback = jsonp;
 			params.format   = 'json';
 
@@ -166,40 +182,54 @@ function LastFM(options){
 			params = array.join('&').replace(/%20/g, '+');
 
 			/* Set script source. */
-			script.src = apiUrl + '?' + params;
+			script.src = url + '?' + params;
 
 			/* Append script element. */
 			head.appendChild(script);
 		}
 	};
 
-	     
 	/* Handshake call. (http://www.last.fm/api/submissions) */
-	this.handshakeCall = function(params){
-		if (!webAuthToken) auth.getWebAuthToken();
+	this.handshakeCall = function(params, callback){
+		var _this = this;
 
-		return false;
-    
-		// var ts = Math.round(new Date().getTime() / 1000);
-		// var token = md5(params.username + md5(params.password);
-		// this.auth.getSession({'api_key':apiKey,'token':token}, {success: function(data){
-		// 	console.log("returned from sessionw tih ");
-		// 	console.log(data);
-		// }});
-		// return false;
+		if (!webAuthToken) {
+			auth.getWebAuthToken(function(){
+				_this.handshakeCall(params);
+			});
+			return false;
+		}
 
-		// var params = {
-		// 	'hs'      : 'true',    // indicates this is a handshake
-		// 	'p'       : '1.2.1',   // version of submissions protocol
-		// 	'c'       : 'tst',     // OBTAIN A CLIENT IDENTIFIER FROM LAST.FM! This one's only for development.
-		// 	'v'       : '1.0',     // version of client,
-		// 	'u'       : params.username,      // last.fm user
-		// 	't'       : ts,
-		// 	'a'       : this.auth.getHandshakeToken(ts),
-		// 	'api_key' : apiKey,
-		// 	'sk'      : ''
-		// 	  };
-		// 	  // ?hs=true&p=1.2.1&c=<client-id>&v=<client-ver>&u=<user>&t=<timestamp>&a=<auth>
+		if (!webSessionKey) {
+			this.auth.getSession({'api_key' : apiKey, 'token' : webAuthToken}, {success: function(data){
+				/* Sessions are infinite by default. Store this securely. */
+				webSessionKey = data.session.key;
+				_this.handshakeCall(params);
+			}});
+			return false;
+		}
+
+		var ts = Math.round(new Date().getTime() / 1000);
+		var params = {
+			'hs'      : 'true',    // indicates this is a handshake
+			'p'       : '1.2.1',   // version of submissions protocol
+			'c'       : 'tst',     // OBTAIN A CLIENT IDENTIFIER FROM LAST.FM! This one's only for development.
+			'v'       : '1.0',     // version of client,
+			'u'       : params.username,      // last.fm user
+			't'       : ts,
+			'a'       : auth.getHandshakeToken(ts),
+			'api_key' : apiKey,
+			'sk'      : webSessionKey
+		};
+
+		$.get(scrobbleHandshakeUrl, params, function(data){ console.log("THe DATA CAME BACK"); console.log(data); }, "jsonp")
+		// TODO need to get scrobbleSessionId, scrobbleNowPlayingUrl, and scrobbleSubmissionUrl from this response somehow
+		//      JSONP is not supported
+		//      Yahoo Pipes won't work
+		//  From api: "These values may change per handshake and should be used for one listening "session" 
+		//             only and not stored across application restarts."
+
+		if(callback) callback();
 	};
 	
 	/* Normal method call. */
@@ -525,6 +555,63 @@ function LastFM(options){
 			signedCall('radio.tune', params, session, callbacks);
 		}
 	};
+	
+	/* Submissions [scrobbling] methods. */
+	/* (at 'http://www.last.fm/api/submissions#handshake') */
+	this.submissions = {
+		/* From API docs: */
+		/*   "The Now-Playing notification is optional, but recommended and should be sent */
+		/*    once when a user starts listening to a song." */
+		nowPlaying : function(params, callbacks){
+			if (!scrobbleSessionId || !scrobbleNowPlayingUrl) throw("Please make the Submissions handshake first.");
+
+			params   = params || {};
+			params.s = scrobbleSessionId;
+			params.a = params.a || ""; /* Artist Name */
+			params.t = params.t || ""; /* Track Name */
+			params.b = params.b || ""; /* Album Name */
+			params.l = params.l || ""; /* Track Length */
+			params.n = params.n || ""; /* Track Number */
+			params.m = params.m || ""; /* MusicBrainz Track ID */
+
+			internalCall(params, callbacks, 'POST', scrobbleNowPlayingUrl);
+		}, 
+		
+		/* From API docs:                                                                                             */
+		/*   "The client should monitor the user's interaction with the music playing service to whatever extent the  */
+		/*    service allows. In order to qualify for submission all of the following criteria must be met:           */
+		/*                                                                                                            */
+		/*    - The track must be submitted once it has finished playing. Whether it has finished playing naturally   */
+		/*      or has been manually stopped by the user is irrelevant.                                               */
+		/*    - The track must have been played for a duration of at least 240 seconds or half the track's total      */
+		/*      length, whichever comes first. Skipping or pausing the track is irrelevant as long as the appropriate */
+		/*       amount has been played.                                                                              */
+		/*    - The total playback time for the track must be more than 30 seconds. Do not submit tracks shorter      */
+		/*      than this.                                                                                            */
+		/*    - Unless the client has been specially configured, it should not attempt to interpret filename          */
+		/*      information to obtain metadata instead of using tags (ID3, etc)."                                     */
+		submission : function(params, callbacks){
+			if (!scrobbleSessionId || !scrobbleSubmissionUrl) throw("Please make the Submissions handshake first.");
+
+			params      = params || {};
+			params.s    = scrobbleSessionId;
+
+			/* Required params for first submission (can be up to 50). */
+			params['a[0]'] = params['a[0]'] || ""; /* Artist Name */
+			params['t[0]'] = params['t[0]'] || ""; /* Track Name */
+			params['i[0]'] = params['i[0]'] || Math.round(new Date().getTime() / 1000); /* Time Started Playing */
+			params['o[0]'] = params['o[0]'] || "P"; /* Src: (P)erson, Non-personalized B(R)oadcast, P(E)rsonalized Rec., (L)ast.fm */
+			params['r[0]'] = params['r[0]'] || ""; /* Rating: (L)ove, (B)an, (S)kip ... ['B' and 'S' require 'o' = 'L'] */
+			params['b[0]'] = params['b[0]'] || ""; /* Album Name */
+			params['l[0]'] = params['l[0]'] || ""; /* Track Length (required for 'o' = 'P') */
+			params['n[0]'] = params['n[0]'] || ""; /* Track Number */
+			params['m[0]'] = params['m[0]'] || ""; /* MusicBrainz Track ID */
+
+			internalCall(params, callbacks, 'POST', scrobbleSubmissionUrl);
+		}
+	};
+
+
 
 	/* Tag methods. */
 	this.tag = {
@@ -750,25 +837,37 @@ function LastFM(options){
 			return md5(apiSecret + timestamp);
 		},
 		
-		getWebAuthToken : function(){
+		getWebAuthToken : function(callback){
       var url = 'http://www.last.fm/api/auth/?api_key=' + apiKey;
       var authPopup = window.open(url, 'lastfmAuth');
+
 			if (authPopup) {
+				authPopup.focus();
 				/* Wait for Web Auth. */
-				var regexp = /token=([a-zA-Z0-9]{32})/;
 				var interval = setInterval(function() {
-					if (authPopup.window && authPopup.window.location && authPopup.window.location.search && authPopup.window.location.search.match(regexp)) {
-						webAuthToken = regexp(authPopup.window.location.search)[1];
+					if (authPopup.window && 
+							authPopup.window.location && 
+							authPopup.window.location.search && 
+							authPopup.window.location.search.match(webAuthTokenRegExp)) {
+						webAuthToken = webAuthTokenRegExp(authPopup.window.location.search)[1];
 						window.focus();
 						authPopup.close();
+						callback();
 						clearInterval(interval);
 					}
 				}, 500);
 			} else {
-				/* Handle popup-blocking...should we use iframe instead of redirect?? */
+				/* Handle popup-blocking...should we use iframe instead of redirect? */
 				window.location = url;
 				/* TODO finish this part */
 			}
 		}
 	};
+	
+	/* In case this is coming from last.fm web authentication */
+	if (window.opener && window.opener.LastFM) {
+		window.opener.focus(); 
+	} else if (window.location.search.match(webAuthTokenRegExp)) {
+		webAuthToken = webAuthTokenRegExp(window.location.search)[1];
+	}
 }
