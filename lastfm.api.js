@@ -12,7 +12,7 @@ function LastFM(options){
 	var webAuthToken          = options.authToken || undefined;
 	var webAuthTokenRegExp    = /token=([a-zA-Z0-9]{32})/;
 	var webSessionKey         = options.webSessionKey || undefined;
-	var scrobbleHandshakeUrl  = options.scrobbleHandshakeUrl || 'http://post.audioscrobbler.com/';
+	var scrobbleHandshakeUrl  = options.scrobbleHandshakeUrl || 'lastfm_handshake.php'; //'http://post.audioscrobbler.com/';
 	var scrobbleSessionId     = options.scrobbleSessionId || undefined;
 	var scrobbleNowPlayingUrl = options.scrobbleNowPlayingUrl || undefined;
 	var scrobbleSubmissionUrl = options.scrobbleSubmissionUrl || undefined;
@@ -51,7 +51,7 @@ function LastFM(options){
 	}
 
 	/* Internal call (POST, GET). */
-	var internalCall = function(params, callbacks, requestMethod, url, opts){
+	var internalCall = function(params, callbacks, requestMethod, url){
 		/* An optional url may be passed (for the Submissions, for example) */
 		url = url || apiUrl;
 
@@ -190,7 +190,7 @@ function LastFM(options){
 	};
 
 	/* Handshake call. (http://www.last.fm/api/submissions) */
-	this.handshakeCall = function(params, callback){
+	this.handshakeCall = function(params, callbacks){
 		var _this = this;
 
 		if (!webAuthToken) {
@@ -203,6 +203,7 @@ function LastFM(options){
 		if (!webSessionKey) {
 			this.auth.getSession({'api_key' : apiKey, 'token' : webAuthToken}, {success: function(data){
 				/* Sessions are infinite by default. Store this securely. */
+				/* TODO store this in a cookie? */
 				webSessionKey = data.session.key;
 				_this.handshakeCall(params);
 			}});
@@ -211,25 +212,29 @@ function LastFM(options){
 
 		var ts = Math.round(new Date().getTime() / 1000);
 		var params = {
-			'hs'      : 'true',    // indicates this is a handshake
-			'p'       : '1.2.1',   // version of submissions protocol
-			'c'       : 'tst',     // OBTAIN A CLIENT IDENTIFIER FROM LAST.FM! This one's only for development.
-			'v'       : '1.0',     // version of client,
-			'u'       : params.username,      // last.fm user
+			'hs'      : 'true',          // indicates this is a handshake
+			'p'       : '1.2.1',         // version of submissions protocol
+			'c'       : 'tst',           // OBTAIN A CLIENT IDENTIFIER FROM LAST.FM! This one's only for development.
+			'v'       : '1.0',           // version of client,
+			'u'       : params.username, // last.fm user
 			't'       : ts,
 			'a'       : auth.getHandshakeToken(ts),
 			'api_key' : apiKey,
 			'sk'      : webSessionKey
 		};
 
-		$.get(scrobbleHandshakeUrl, params, function(data){ console.log("THe DATA CAME BACK"); console.log(data); }, "jsonp")
-		// TODO need to get scrobbleSessionId, scrobbleNowPlayingUrl, and scrobbleSubmissionUrl from this response somehow
-		//      JSONP is not supported
-		//      Yahoo Pipes won't work
-		//  From api: "These values may change per handshake and should be used for one listening "session" 
-		//             only and not stored across application restarts."
+		internalCall(params, {success:function(data){
+			/* From API specs: "These values may change per handshake and should be used for one listening */
+			/*                 "session" only and not stored across application restarts."                 */
+			scrobbleSessionId     = data.scrobbleSessionId;
+			scrobbleNowPlayingUrl = data.scrobbleNowPlayingUrl;
+			scrobbleSubmissionUrl = data.scrobbleSubmissionUrl;
 
-		if(callback) callback();
+			/* Call user callback. */
+			if(typeof(callbacks.success) != 'undefined'){
+				callbacks.success();
+			}
+		}}, 'GET', scrobbleHandshakeUrl);
 	};
 	
 	/* Normal method call. */
@@ -864,7 +869,7 @@ function LastFM(options){
 		}
 	};
 	
-	/* In case this is coming from last.fm web authentication */
+	/* In case this is coming from last.fm web authentication (popup, or the origin receiving the token) */
 	if (window.opener && window.opener.LastFM) {
 		window.opener.focus(); 
 	} else if (window.location.search.match(webAuthTokenRegExp)) {
