@@ -10,8 +10,8 @@
 	<script src="lastfm.api.js" type="text/javascript" charset="utf-8"></script>
   <script type="text/javascript" charset="utf-8">
     lastfm = new LastFM({
-      apiKey:    'APIKEY',
-      apiSecret: 'APISECRET'
+      apiKey:    '',
+      apiSecret: ''
     });
     
     // lastfm.artist.getInfo({album: 'and out comes the wovles', artist: 'rancid'}, {success: function(data){ 
@@ -21,8 +21,19 @@
     // 
     
     // move this into lastfm.api.js (where it gets init'ed?)
-    lastfm.handshakeCall({'username':'me','password':'secret'});
-    qs = window.location.href.split('?');
+
+  	/* Check if this is coming back from last.fm Web Auth */
+    if (window.opener && window.opener.LastFM) {
+      window.opener.focus();
+      // window.close();
+      // close this window?
+    } else {
+      lastfm.handshakeCall({'username':'me','password':'my-pw'});
+      
+    }
+
+    qs = window.location.href.split('?')[1];
+
     if(qs && qs.match(/justAuthenticated=true/)) {
       console.log("JUST AUTHED!!");
       qs = qs.split('&').map(function(param){

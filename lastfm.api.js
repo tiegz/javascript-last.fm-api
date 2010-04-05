@@ -6,12 +6,12 @@
 
 function LastFM(options){
 	/* Set default values for required options. */
-	var apiKey    = options.apiKey    || '';
-	var apiSecret = options.apiSecret || '';
-	var apiUrl    = options.apiUrl    || 'http://ws.audioscrobbler.com/2.0/';
-	var authToken = options.authToken || undefined;
-	var hsUrl     = options.hsUrl     || 'http://post.audioscrobbler.com/';
-	var cache     = options.cache     || undefined;
+	var apiKey       = options.apiKey    || '';
+	var apiSecret    = options.apiSecret || '';
+	var apiUrl       = options.apiUrl    || 'http://ws.audioscrobbler.com/2.0/';
+	var webAuthToken = options.authToken || undefined;
+	var hsUrl        = options.hsUrl     || 'http://post.audioscrobbler.com/';
+	var cache        = options.cache     || undefined;
 
 	/* Set API key. */
 	this.setApiKey = function(_apiKey){
@@ -29,8 +29,8 @@ function LastFM(options){
 	};
 
 	/* Set Auth Token. Good for 60 minutes. Set this in session? */
-	this.setAuthToken = function(_authToken){
-		authToken = _authToken;
+	this.setWebAuthToken = function(_webAuthToken){
+		webAuthToken = _webAuthToken;
 	};
 
 	/* Set cache. */
@@ -176,7 +176,7 @@ function LastFM(options){
 	     
 	/* Handshake call. (http://www.last.fm/api/submissions) */
 	this.handshakeCall = function(params){
-		if (!auth.getAuthToken()) auth.getUserAuth();
+		if (!webAuthToken) auth.getWebAuthToken();
 
 		return false;
     
@@ -750,12 +750,25 @@ function LastFM(options){
 			return md5(apiSecret + timestamp);
 		},
 		
-		getUserAuth : function(){
-			window.location.href = 'http://www.last.fm/api/auth/?api_key=' + apiKey;
-		},
-
-		getAuthToken : function() {
-			return authToken;
+		getWebAuthToken : function(){
+      var url = 'http://www.last.fm/api/auth/?api_key=' + apiKey;
+      var authPopup = window.open(url, 'lastfmAuth');
+			if (authPopup) {
+				/* Wait for Web Auth. */
+				var regexp = /token=([a-zA-Z0-9]{32})/;
+				var interval = setInterval(function() {
+					if (authPopup.window && authPopup.window.location && authPopup.window.location.search && authPopup.window.location.search.match(regexp)) {
+						webAuthToken = regexp(authPopup.window.location.search)[1];
+						window.focus();
+						authPopup.close();
+						clearInterval(interval);
+					}
+				}, 500);
+			} else {
+				/* Handle popup-blocking...should we use iframe instead of redirect?? */
+				window.location = url;
+				/* TODO finish this part */
+			}
 		}
 	};
 }
