@@ -35,10 +35,36 @@ write methods. Reading responses is only possible using HTTP Access-Control,
 which is currently not supported by the last.fm API.
 
 
-Submissions
+Submissions [aka Scrobbling]
 -----------
 
-Scrobbling is not yet supported.
+The Submissions API currently doesn't have a JSONP or Cross-Domain supported response (for the handshake), 
+so this library includes a PHP hack to get around that for now (it should be supported in the near future).
+
+The Scrobbling handshake is done implicitly if the session, now-playing url, and submissions url are not
+already stored in the cookies.
+
+Remember to set the 'callback url' in your LastFM API account to the same page that is making the handshake
+(It will be accessed in a popup window).
+
+/* Create a LastFM object */
+var lastfm = new LastFM({
+	apiKey    : 'f21088bf9097b49ad4e7f487abab981e',
+	apiSecret : '7ccaec2093e33cded282ec7bc81c6fca',
+	cache     : cache
+});
+
+/* Submit a track that was played */
+lastfm.submissions.submission({
+	'username' : 'tiegz',
+	'a[0]' : "the dismemberment plan", 
+	't[0]' : "the city", 
+	'o[0]' : 'P', 
+	'r[0]' : 'L', 
+	'b[0]' : 'emergency', 
+	'l[0]' : '265', 
+	'n[0]' : '9'
+});
 
 
 Usage

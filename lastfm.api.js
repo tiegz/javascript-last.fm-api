@@ -5,18 +5,38 @@
  */
 
 function LastFM(options){
+	/* Utility functions */
+	var cookie = function(name, value, days) {
+		if (!value && !days) { /* Get */
+			var nameEQ = name + "=";
+			var cookies = document.cookie.split(';');
+			for(var i = 0; i < cookies.length;i++) {
+				var c = cookies[i];
+				while (c.charAt(0) == ' ') c = c.substring(1, c.length);
+				if (c.indexOf(nameEQ) == 0) return unescape(c.substring(nameEQ.length, c.length));
+			}
+			return null;
+		} else { /* Set */
+			var now = new Date();
+			var expires = new Date();
+			if (days == null || days == 0) days = 30;
+			expires.setTime(now.getTime() + 3600000 * 24 * days);
+			document.cookie = name + "=" + escape(value) + ";expires=" + expires.toGMTString();
+		}
+	}
+
 	/* Set default values for required options. */
-	var apiKey                = options.apiKey    || '';
-	var apiSecret             = options.apiSecret || '';
-	var apiUrl                = options.apiUrl    || 'http://ws.audioscrobbler.com/2.0/';
-	var webAuthToken          = options.authToken || undefined;
+	var apiKey                = options.apiKey                || '';
+	var apiSecret             = options.apiSecret             || '';
+	var apiUrl                = options.apiUrl                || 'http://ws.audioscrobbler.com/2.0/';
+	var webAuthToken          = options.authToken             || undefined;
 	var webAuthTokenRegExp    = /token=([a-zA-Z0-9]{32})/;
-	var webSessionKey         = options.webSessionKey || undefined;
-	var scrobbleHandshakeUrl  = options.scrobbleHandshakeUrl || 'lastfm_handshake.php'; //'http://post.audioscrobbler.com/';
-	var scrobbleSessionId     = options.scrobbleSessionId || undefined;
-	var scrobbleNowPlayingUrl = options.scrobbleNowPlayingUrl || undefined;
-	var scrobbleSubmissionUrl = options.scrobbleSubmissionUrl || undefined;
-	var cache                 = options.cache     || undefined;
+	var webSessionKey         = options.webSessionKey         || undefined;
+	var scrobbleHandshakeUrl  = options.scrobbleHandshakeUrl  || 'lastfm_handshake.php'; // 'http://post.audioscrobbler.com/';
+	var scrobbleSessionId     = cookie('scrobbleSessionId');
+	var scrobbleNowPlayingUrl = options.scrobbleNowPlayingUrl || cookie('scrobbleNowPlayingUrl') || undefined;
+	var scrobbleSubmissionUrl = options.scrobbleSubmissionUrl || cookie('scrobbleSubmissionUrl') || undefined;
+	var cache                 = options.cache                 || undefined;
 
 	/* Set API key. */
 	this.setApiKey = function(_apiKey){
@@ -37,18 +57,6 @@ function LastFM(options){
 	this.setCache = function(_cache){
 		cache = _cache;
 	};
-	
-	this.setScrobbleSessionId = function(_id){
-		scrobbleSessionId = _id;
-	};
-	
-	this.setScrobbleNowPlayingUrl = function(_id){
-		scrobbleNowPlayingUrl = _id;
-	};
-	
-	this.setScrobbleSubmissionUrl = function(_id){
-		scrobbleSubmissionUrl = _id;
-	}
 
 	/* Internal call (POST, GET). */
 	var internalCall = function(params, callbacks, requestMethod, url){
@@ -190,22 +198,20 @@ function LastFM(options){
 	};
 
 	/* Handshake call. (http://www.last.fm/api/submissions) */
-	this.handshakeCall = function(params, callbacks){
-		var _this = this;
-
+	var handshakeCall = function(params, callbacks){
 		if (!webAuthToken) {
 			auth.getWebAuthToken(function(){
-				_this.handshakeCall(params);
+				handshakeCall(params);
 			});
 			return false;
 		}
 
 		if (!webSessionKey) {
-			this.auth.getSession({'api_key' : apiKey, 'token' : webAuthToken}, {success: function(data){
+			auth.getSession({'api_key' : apiKey, 'token' : webAuthToken}, {success: function(data){
 				/* Sessions are infinite by default. Store this securely. */
 				/* TODO store this in a cookie? */
 				webSessionKey = data.session.key;
-				_this.handshakeCall(params);
+				handshakeCall(params);
 			}});
 			return false;
 		}
@@ -224,16 +230,16 @@ function LastFM(options){
 		};
 
 		internalCall(params, {success:function(data){
-			/* From API specs: "These values may change per handshake and should be used for one listening */
-			/*                 "session" only and not stored across application restarts."                 */
-			scrobbleSessionId     = data.scrobbleSessionId;
-			scrobbleNowPlayingUrl = data.scrobbleNowPlayingUrl;
-			scrobbleSubmissionUrl = data.scrobbleSubmissionUrl;
+			/* From API specs: 'These values may change per handshake and should be used for one listening */
+			/*                 "session" only and not stored across application restarts.'                 */
+			cookie('scrobbleSessionId', (scrobbleSessionId = data.scrobbleSessionId));
+			cookie('scrobbleNowPlayingUrl', (scrobbleNowPlayingUrl = data.scrobbleNowPlayingUrl));
+			cookie('scrobbleSubmissionUrl', (scrobbleSubmissionUrl = data.scrobbleSubmissionUrl));
 
 			/* Call user callback. */
-			if(typeof(callbacks.success) != 'undefined'){
+			if(callbacks && typeof(callbacks.success) != 'undefined'){
 				callbacks.success();
-			}
+			};
 		}}, 'GET', scrobbleHandshakeUrl);
 	};
 	
@@ -564,11 +570,17 @@ function LastFM(options){
 	/* Submissions [scrobbling] methods. */
 	/* (at 'http://www.last.fm/api/submissions#handshake') */
 	this.submissions = {
+		prepare : function(params, callbacks) {
+			if (!scrobbleSessionId || !scrobbleNowPlayingUrl || !scrobbleSubmissionUrl) {
+				handshakeCall(params, callbacks);
+			};
+		},
+
 		/* From API docs: */
 		/*   "The Now-Playing notification is optional, but recommended and should be sent */
 		/*    once when a user starts listening to a song." */
 		nowPlaying : function(params, callbacks){
-			if (!scrobbleSessionId || !scrobbleNowPlayingUrl) throw("Please make the Submissions handshake first.");
+			this.prepare(params, callbacks);
 
 			params   = params || {};
 			params.s = scrobbleSessionId;
@@ -596,10 +608,11 @@ function LastFM(options){
 		/*    - Unless the client has been specially configured, it should not attempt to interpret filename          */
 		/*      information to obtain metadata instead of using tags (ID3, etc)."                                     */
 		submission : function(params, callbacks){
-			if (!scrobbleSessionId || !scrobbleSubmissionUrl) throw("Please make the Submissions handshake first.");
+			this.prepare(params, callbacks);
 
 			params      = params || {};
 			params.s    = scrobbleSessionId;
+			if ('username' in params) delete params.username;
 
 			/* Required params for first submission (can be up to 50). */
 			params['a[0]'] = params['a[0]'] || ""; /* Artist Name */
@@ -866,6 +879,10 @@ function LastFM(options){
 				window.location = url;
 				/* TODO finish this part */
 			}
+		},
+		
+		getSession : function(params, callbacks){
+			signedCall('auth.getSession', params, null, callbacks);
 		}
 	};
 	
